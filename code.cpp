@@ -11,209 +11,188 @@
 
 LiquidCrystal_I2C lcd(LCD_ADDRESS, LCD_COLUMNS, LCD_ROWS);
 
-// Define component names
 const String componentNames[3] = {"WATER PUMP", "SUCTION PUMP", "BLOWER"};
 const String allOnButtonName = "START/STOP AUTO";
 
-// Pin numbers
-const int componentPins[3] = {27, 26, 25}; // Best combo for relays
-const int buttonPins[4] = {13, 12, 14, 33}; // Best combo for buttons
-const int ledPins[3] = {18, 5, 15}; // For component status indication
+const int componentPins[3] = {27, 26, 25}; 
+const int buttonPins[4] = {13, 12, 14, 33};
+const int ledPins[3] = {18, 5, 15}; 
 const int BUZZER_PIN = 4;
 
-// Timing settings (in milliseconds)
 const unsigned long waterPumpOnTime = 15000;
-const unsigned long suctionPumpDelay = 5000; // Delay before starting suction pump
+const unsigned long suctionPumpDelay = 5000; 
 const unsigned long suctionPumpOnTime = 25000;
 const unsigned long blowerOnTime = 40000;
-const unsigned long screenChangeInterval = 5000; // Screen switch every 5 seconds
+const unsigned long screenChangeInterval = 5000;
 
-// Debounce settings
 const unsigned long debounceDelay = 50;
-Bounce debouncers[4]; // Debouncer instances
+Bounce debouncers[4]; 
 
-// State tracking
-bool componentStates[3] = {false, false, false}; // Initially all off
+bool componentStates[3] = {false, false, false}; 
 bool automationRunning = false;
 bool buttonPressed[4] = {false, false, false, false};
 
-// Timing variables
 unsigned long automationStartTime = 0;
 unsigned long lastScreenChangeTime = 0;
-int currentComponentIndex = -1; // -1 means no component active in sequence
-int currentScreen = 0; // 0: Welcome, 1: Guide, 2: Component Status
+int currentComponentIndex = -1; 
+int currentScreen = 0; 
 
-String lastLine1 = ""; // To keep track of previous display content
-String lastLine2 = ""; // To keep track of previous display content
+String lastLine1 = ""; 
+String lastLine2 = "";
 
 void playToneSequence(const int frequencies[], int length, int duration, int delayBetween) {
-  for (int i = 0; i < length; i++) {
-    tone(BUZZER_PIN, frequencies[i], duration);
-    delay(duration + delayBetween);
-  }
-  noTone(BUZZER_PIN);
+  for (int i = 0; i < length; i++) {
+    tone(BUZZER_PIN, frequencies[i], duration);
+    delay(duration + delayBetween);
+  }
+  noTone(BUZZER_PIN);
 }
 
 void playStartupSound() {
-  const int frequencies[] = {1200, 1800, 1600, 2000, 2400};
-  playToneSequence(frequencies, 5, 150, 100);
+  const int frequencies[] = {1200, 1800, 1600, 2000, 2400};
+  playToneSequence(frequencies, 5, 150, 100);
 }
 
 void playOnOffButtonSound() {
-  const int frequencies[] = {2440};
-  playToneSequence(frequencies, 1, 50, 0);
+  const int frequencies[] = {2440};
+  playToneSequence(frequencies, 1, 50, 0);
 }
 
 void playAutomationToggleSound() {
-  const int frequencies[] = {1800, 1600, 2400};
-  playToneSequence(frequencies, 3, 100, 50);
+  const int frequencies[] = {1800, 1600, 2400};
+  playToneSequence(frequencies, 3, 100, 50);
 }
 
 void playAutomationCompletionSound() {
-  const int frequencies[] = {2000, 2200, 2400, 2600};
-  playToneSequence(frequencies, 4, 200, 50);
+  const int frequencies[] = {2000, 2200, 2400, 2600};
+  playToneSequence(frequencies, 4, 200, 50);
 }
 
 void playComponentSwitchingSound() {
-  const int frequencies[] = {1800, 2000};
-  playToneSequence(frequencies, 2, 100, 30);
+  const int frequencies[] = {1800, 2000};
+  playToneSequence(frequencies, 2, 100, 30);
 }
 
 
 
 void setup() {
-  Serial.begin(115200);
-  lcd.init();
-  lcd.backlight();
- initProperties();
+  Serial.begin(115200);
+  lcd.init();
+  lcd.backlight();
+ initProperties();
 
-  // Connect to Arduino IoT Cloud
-  ArduinoCloud.begin(ArduinoIoTPreferredConnection);
-  
-  /*
-     The following function allows you to obtain more information
-     related to the state of network and IoT Cloud connection and errors
-     the higher number the more granular information you’ll get.
-     The default is 0 (only errors).
-     Maximum is 4
- */
-  setDebugMessageLevel(2);
-  ArduinoCloud.printDebugInfo();
-  Serial.println("\n***** Welcome to the Automatic Sanitation System *****");
-  Serial.println("Press the buttons or use the 'Start/Stop Automation' button to control the system.");
+  ArduinoCloud.begin(ArduinoIoTPreferredConnection);
+  
+  setDebugMessageLevel(2);
+  ArduinoCloud.printDebugInfo();
+  Serial.println("\n***** Welcome to the Automatic Sanitation System *****");
+  Serial.println("Press the buttons or use the 'Start/Stop Automation' button to control the system.");
 
-  // Set up pins immediately
-  for (int i = 0; i < 3; i++) {
-    pinMode(componentPins[i], OUTPUT);
-    digitalWrite(componentPins[i], HIGH); // Turn components off
-    pinMode(ledPins[i], OUTPUT); // For status LEDs
-    digitalWrite(ledPins[i], LOW); // Initially turn LEDs off
-  }
+  for (int i = 0; i < 3; i++) {
+    pinMode(componentPins[i], OUTPUT);
+    digitalWrite(componentPins[i], HIGH); 
+    pinMode(ledPins[i], OUTPUT); 
+    digitalWrite(ledPins[i], LOW); 
+  }
 
-  for (int i = 0; i < 4; i++) {
-    pinMode(buttonPins[i], INPUT_PULLUP);
-    debouncers[i].attach(buttonPins[i]);
-    debouncers[i].interval(debounceDelay);
-  }
+  for (int i = 0; i < 4; i++) {
+    pinMode(buttonPins[i], INPUT_PULLUP);
+    debouncers[i].attach(buttonPins[i]);
+    debouncers[i].interval(debounceDelay);
+  }
 
-  pinMode(BUZZER_PIN, OUTPUT);
-  playStartupSound();
+  pinMode(BUZZER_PIN, OUTPUT);
+  playStartupSound();
 
-  displayCenteredText("WELCOME TO", "AUTO SANITATION");
-  delay(2000);
-  displayCenteredText("PRESS ANY", "BUTTON TO START");
-  delay(2000);
+  displayCenteredText("WELCOME TO", "AUTO SANITATION");
+  delay(2000);
+  displayCenteredText("PRESS ANY", "BUTTON TO START");
+  delay(2000);
 
-  lastScreenChangeTime = millis(); // Initialize screen change timing
-  Serial.println("System ready.");
+  lastScreenChangeTime = millis(); 
+  Serial.println("System ready.");
 }
 
 
 
 
 
-  void loop() {
+  void loop() {
 
-      ArduinoCloud.update();
+      ArduinoCloud.update();
 
-  // Update debouncer state and handle button presses
-  for (int i = 0; i < 4; i++) {
-    debouncers[i].update();
-    bool pressed = debouncers[i].fell();
+  for (int i = 0; i < 4; i++) {
+    debouncers[i].update();
+    bool pressed = debouncers[i].fell();
 
-    if (pressed && !buttonPressed[i]) {
-      buttonPressed[i] = true;
-      handleButtonPress(i);
-    } else if (!debouncers[i].fell() && buttonPressed[i]) {
-      buttonPressed[i] = false;
-    }
-  }
+    if (pressed && !buttonPressed[i]) {
+      buttonPressed[i] = true;
+      handleButtonPress(i);
+    } else if (!debouncers[i].fell() && buttonPressed[i]) {
+      buttonPressed[i] = false;
+    }
+  }
 
-  // Automation sequence
-  if (automationRunning) {
-    handleAutomationSequence();
-  } else {
-    // Regular screen rotation while automation or components are not running
-    if (millis() - lastScreenChangeTime >= screenChangeInterval && !anyComponentRunning()) {
-      lastScreenChangeTime = millis();
-      currentScreen = (currentScreen + 1) % 3; // Rotate between Welcome, Guide, and Component Status
+  if (automationRunning) {
+    handleAutomationSequence();
+  } else {
+    if (millis() - lastScreenChangeTime >= screenChangeInterval && !anyComponentRunning()) {
+      lastScreenChangeTime = millis();
+      currentScreen = (currentScreen + 1) % 3; 
 
-      // Display the current screen
-      updateScreen();
-    } else if (anyComponentRunning()) {
-      // Show component status if any component is active
-      displayComponentStatus();
-    }
-  }
+      updateScreen();
+    } else if (anyComponentRunning()) {
+      displayComponentStatus();
+    }
+  }
 }
 
-// Handle button press logic
 void handleButtonPress(int buttonIndex) {
-  if (buttonIndex == 3) { // Start/Stop Automation button
-    automationRunning = !automationRunning;
-    if (automationRunning) {
-      startAutomation();
-    } else {
-      stopAutomation();
-    }
-    playAutomationToggleSound();
-  } else { // Individual component buttons
-    toggleComponent(buttonIndex);
-    playOnOffButtonSound();
-  }
+  if (buttonIndex == 3) { 
+    automationRunning = !automationRunning;
+    if (automationRunning) {
+      startAutomation();
+    } else {
+      stopAutomation();
+    }
+    playAutomationToggleSound();
+  } else { 
+    toggleComponent(buttonIndex);
+    playOnOffButtonSound();
+  }
 }
 
 void startAutomation() {
-  Serial.println(getTimestamp() + " Starting automation sequence...");
-  automationRunning = true;
-  automationStartTime = millis();
-  currentComponentIndex = 0;
-  digitalWrite(componentPins[0], LOW); // Turn on water pump
-  componentStates[0] = true;
-  digitalWrite(ledPins[0], HIGH);
-  Serial.println(getTimestamp() + " WATER PUMP CYCLE STARTED");
-  updateDisplay("WATER PUMP", "RUNNING (15 SEC)");
+  Serial.println(getTimestamp() + " Starting automation sequence...");
+  automationRunning = true;
+  automationStartTime = millis();
+  currentComponentIndex = 0;
+  digitalWrite(componentPins[0], LOW); 
+  componentStates[0] = true;
+  digitalWrite(ledPins[0], HIGH);
+  Serial.println(getTimestamp() + " WATER PUMP CYCLE STARTED");
+  updateDisplay("WATER PUMP", "RUNNING (15 SEC)");
 }
 
 void stopAutomation() {
-  Serial.println(getTimestamp() + " Stopping automation sequence...");
-  automationRunning = false;
-  for (int i = 0; i < 3; i++) {
-    digitalWrite(componentPins[i], HIGH);
-    componentStates[i] = false;
-    digitalWrite(ledPins[i], LOW);
-  }
-  currentComponentIndex = -1;
-  updateDisplay("AUTOMATION", "STOPPED");
+  Serial.println(getTimestamp() + " Stopping automation sequence...");
+  automationRunning = false;
+  for (int i = 0; i < 3; i++) {
+    digitalWrite(componentPins[i], HIGH);
+    componentStates[i] = false;
+    digitalWrite(ledPins[i], LOW);
+  }
+  currentComponentIndex = -1;
+  updateDisplay("AUTOMATION", "STOPPED");
 }
 
 void toggleComponent(int index) {
-  componentStates[index] = !componentStates[index];
-  digitalWrite(componentPins[index], componentStates[index] ? LOW : HIGH);
-  digitalWrite(ledPins[index], componentStates[index] ? HIGH : LOW);
+  componentStates[index] = !componentStates[index];
+  digitalWrite(componentPins[index], componentStates[index] ? LOW : HIGH);
+  digitalWrite(ledPins[index], componentStates[index] ? HIGH : LOW);
 
-  Serial.println(getTimestamp() + " " + componentNames[index] + " " + (componentStates[index] ? "TURNED ON" : "TURNED OFF"));
-  updateDisplay(componentNames[index], componentStates[index] ? "RUNNING" : "STOPPED");
+  Serial.println(getTimestamp() + " " + componentNames[index] + " " + (componentStates[index] ? "TURNED ON" : "TURNED OFF"));
+  updateDisplay(componentNames[index], componentStates[index] ? "RUNNING" : "STOPPED");
 }
 
 void handleAutomationSequence() {
@@ -266,7 +245,6 @@ void handleAutomationSequence() {
     Serial.println(getTimestamp() + " AUTOMATION CYCLE COMPLETE");
   }
 
-  // Keep display focused on current component during automation
   updateAutomationDisplay();
 }
 
@@ -303,8 +281,7 @@ bool anyComponentRunning() {
 }
 
 void updateDisplay(const String &line1, const String &line2) {
-  if (line1 != lastLine1 || line2 != lastLine2) { // Update only if content changes
-    lcd.clear();
+  if (line1 != lastLine1 || line2 != lastLine2) { 
     lcd.setCursor(0, 0);
     lcd.print(line1);
     lcd.setCursor(0, 1);
@@ -347,11 +324,9 @@ void displayComponentStatus() {
 }
 
 void checkForErrors() {
-  // Placeholder for error handling logic.
 }
 
 void handleSerialCommand(String command) {
-  // Placeholder for serial command handling.
 }
 
 String getTimestamp() {
